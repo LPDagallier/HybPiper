@@ -492,6 +492,10 @@ def add_check_targetfile_parser(subparsers):
                          default=False,
                          help='FASTA file containing amino-acid target sequences for each gene. If there are multiple '
                               'targets for a gene, the id must be of the form: >Taxon-geneName')
+    parser_check_target_file.add_argument('--no_terminal_stop_codons', action='store_true', default=False,
+                                          help='When testing for open reading frames, do not allow a translated frame '
+                                               'to have a single stop codon at the C-terminus of the translated '
+                                               'protein sequence. Default is False.')
     parser_check_target_file.add_argument('--sliding_window_size',
                                           type=int,
                                           default=None,
@@ -509,3 +513,65 @@ def add_check_targetfile_parser(subparsers):
 
     return parser_check_target_file
 
+
+def add_fix_targetfile_parser(subparsers):
+    """
+    Parser for fix_targetfile
+
+    :param argparse._SubParsersAction subparsers: subparsers object to add parser(s) to
+    :return None: no return value specified; default is None
+    """
+
+    parser_fix_target_file = subparsers.add_parser('fix_targetfile',
+                                                   help='Fix the target file (sequences with low-complexity regions, '
+                                                        'nucleotide sequences with undetermined readiong frames.')
+    group_1 = parser_fix_target_file.add_mutually_exclusive_group(required=True)
+    group_1.add_argument('--targetfile_dna', '-t_dna',
+                         dest='targetfile_dna',
+                         default=False,
+                         help='FASTA file containing DNA target sequences for each gene. If there are multiple '
+                              'targets for a gene, the id must be of the form: >Taxon-geneName')
+    group_1.add_argument('--targetfile_aa', '-t_aa',
+                         dest='targetfile_aa',
+                         default=False,
+                         help='FASTA file containing amino-acid target sequences for each gene. If there are multiple '
+                              'targets for a gene, the id must be of the form: >Taxon-geneName')
+    parser_fix_target_file.add_argument('control_file',
+                                        help='The *.ctl file output by the command "hybpiper check_targetfile".')
+    parser_fix_target_file.add_argument('--no_terminal_stop_codons', action='store_true', default=False,
+                                        help='When testing for open reading frames, do not allow a translated frame '
+                                             'to have a single stop codon at the C-terminus of the translated '
+                                             'protein sequence. Default is False. If supplied, this parameter will '
+                                             'override the setting in the *.ctl file.')
+    parser_fix_target_file.add_argument('--allow_gene_removal', action='store_true', default=False,
+                                        help='Allow frame-correction and filtering steps to remove all representative '
+                                             'sequences for a given gene. Default is False; script will exit with an '
+                                             'information message instead. If supplied, this parameter will '
+                                             'override the setting in the *.ctl file.')
+    parser_fix_target_file.add_argument('--reference_protein_file', default=None,
+                                        help='If a given sequence can be translated in more than one forward frame '
+                                             'without stop codons, choose the translation that best matches the '
+                                             'corresponding reference protein provided in this fasta file. Sequence '
+                                             'ids must be of the form: >Taxon-geneName')
+    parser_fix_target_file.add_argument('--maximum_distance', default=0.5, type=utils.restricted_float, metavar='FLOAT',
+                                        help='When comparing possible translation frames to a reference protein, '
+                                             'the maximum distance allowed between the translated frame and the '
+                                             'reference sequence for any possible translation frame to be selected. '
+                                             'Useful to filter out sequences with frameshifts that do NOT introduce '
+                                             'stop codons. 0.0 means identical sequences, 1.0 means completely '
+                                             'different sequences. Default is 0.5')
+    parser_fix_target_file.add_argument('--filter_by_length_percentage', default=0.0, type=float, metavar='FLOAT',
+                                        help='If more than one sequence is present for a given gene, only include '
+                                             'sequences longer than this percentage of the longest gene sequence. '
+                                             'Default is 0.0 (all sequences retained).')
+    parser_fix_target_file.add_argument('--alignments', action='store_true', default=False,
+                                        help='Create per-gene alignments for in-frame translated protein sequences.')
+    parser_fix_target_file.add_argument('--concurrent_alignments', default=1, type=int, metavar='INTEGER',
+                                        help='Number of alignments to run concurrently. Default is 1.')
+    parser_fix_target_file.add_argument('--threads_per_concurrent_alignment', default=1, type=int, metavar='INTEGER',
+                                        help='Number of threads to run each concurrent alignment with. Default is 1.')
+
+    # Set defaults for subparser <check_target_file>:
+    parser_fix_target_file.set_defaults(logger=None)
+
+    return parser_fix_target_file

@@ -130,6 +130,7 @@ from hybpiper import hybpiper_stats
 from hybpiper import retrieve_sequences
 from hybpiper import paralog_retriever
 from hybpiper import gene_recovery_heatmap
+from hybpiper import fix_targetfile
 from hybpiper import hybpiper_subparsers
 from hybpiper import utils
 from hybpiper.utils import log_or_print
@@ -240,12 +241,16 @@ def check_target_file_headers_and_duplicate_names(targetfile, logger=None):
                  f'unique genes.', logger=logger)
 
 
-def check_target_file_stop_codons_and_multiple_of_three(targetfile, translate_target_file=False, logger=None):
+def check_target_file_stop_codons_and_multiple_of_three(targetfile,
+                                                        no_terminal_stop_codons=False,
+                                                        translate_target_file=False,
+                                                        logger=None):
     """
 
-    :param targetfile:
-    :param translate_target_file:
-    :param logger:
+    :param str targetfile: path to the targetfile
+    :param logging.Logger logger: a logger object
+    :param bool no_terminal_stop_codons: if True, do not allow a single stop codon at C-terminal end of protein
+    :param bool translate_target_file: if True, nucleotide targetfile will be translated
     :return:
     """
 
@@ -255,7 +260,7 @@ def check_target_file_stop_codons_and_multiple_of_three(targetfile, translate_ta
     translated_seqs_to_write = []
     seqs_needed_padding_dict = defaultdict(list)
     seqs_with_stop_codons_dict = defaultdict(list)
-    seqs_with_stop_codon_last_five_amino_acids_dict = defaultdict(list)
+    seqs_with_terminal_stop_codon_dict = defaultdict(list)
 
     if translate_target_file:
         for seq in seqs:
@@ -270,17 +275,21 @@ def check_target_file_stop_codons_and_multiple_of_three(targetfile, translate_ta
             if needed_padding:
                 seqs_needed_padding_dict[gene_name].append(seq)
 
-            if num_stop_codons == 1 and re.search('[*]', str(translated_seq)[-5:]):
-                seqs_with_stop_codon_last_five_amino_acids_dict[gene_name].append(seq)
+            if num_stop_codons == 0 or \
+                    (num_stop_codons == 1 and
+                     re.search('[*]', str(translated_seq)[-1]) and not
+                     no_terminal_stop_codons):
+                seqs_with_terminal_stop_codon_dict[gene_name].append(seq)
+
             elif num_stop_codons >= 1:
                 seqs_with_stop_codons_dict[gene_name].append(seq)
 
-        if seqs_with_stop_codon_last_five_amino_acids_dict:
+        if seqs_with_terminal_stop_codon_dict:
             seq_list = [seq.name for gene_name, target_file_sequence_list in
-                        seqs_with_stop_codon_last_five_amino_acids_dict.items() for seq in target_file_sequence_list]
+                        seqs_with_terminal_stop_codon_dict.items() for seq in target_file_sequence_list]
             fill = textwrap.fill(
-                f'{"[INFO]:":10} There are {len(seq_list)} sequences in your target file that contain a single stop '
-                f'codon in the last five amino-acids of the C-terminal end. These are: ', width=90,
+                f'{"[INFO]:":10} There are {len(seq_list)} sequences in your target file that contain a single '
+                f'terminal stop codon. These are: ', width=90,
                 subsequent_indent=' ' * 11)
             log_or_print(f'{fill}\n', logger=logger, logger_level='debug')
             fill = textwrap.fill(f'{", ".join(seq_list)}', width=90, initial_indent=' ' * 11,
@@ -314,7 +323,7 @@ def check_target_file_stop_codons_and_multiple_of_three(targetfile, translate_ta
                                  subsequent_indent=' ' * 11, break_on_hyphens=False)
             log_or_print(f'{fill}\n', logger=logger, logger_level='debug')
 
-    return translated_seqs_to_write
+    return translated_seqs_to_write, seqs_with_stop_codons_dict, seqs_needed_padding_dict
 
 
 def check_targetfile(targetfile, targetfile_type, using_bwa, logger=None):
@@ -353,10 +362,10 @@ def check_targetfile(targetfile, targetfile_type, using_bwa, logger=None):
 
     # Check that seqs in target file can be translated from the first codon position in the forwards frame:
     if using_bwa or translate_target_file:  # i.e. it's not a protein file
-        translated_seqs_to_write = check_target_file_stop_codons_and_multiple_of_three(
-            targetfile,
-            translate_target_file=True,  # Set manually
-            logger=logger)
+        translated_seqs_to_write, seqs_with_stop_codons_dict, seqs_needed_padding_dict = \
+            check_target_file_stop_codons_and_multiple_of_three(targetfile,
+                                                                translate_target_file=True,  # Set manually
+                                                                logger=logger)
 
         if translate_target_file:
             translated_target_file = f'{target_file_path}/{file_name}_translated{ext}'
@@ -1171,7 +1180,7 @@ def assemble(args):
     ####################################################################################################################
     # Check read and target files
     ####################################################################################################################
-    # Set target file type and path, and check it exists and isn't empty::
+    # Set target file type and path, and check it exists and isn't empty:
     if args.targetfile_dna:
         targetfile = os.path.abspath(args.targetfile_dna)
         targetfile_type = 'DNA'
@@ -1555,7 +1564,7 @@ def check_targetfile_standalone(args):
     Performs targetfile checks. Does not translate a DNA file; low-complexity checks are performed on the target file
     as provided.
 
-    :param args: argparse namespace with subparser options for function check_targetfile()
+    :param args: argparse namespace with subparser options for function check_targetfile_standalone()
     :return: None: no return value specified; default is None
     """
 
@@ -1573,8 +1582,11 @@ def check_targetfile_standalone(args):
     check_target_file_headers_and_duplicate_names(targetfile, logger=args.logger)
 
     # Check that seqs in target file can be translated from the first codon position in the forwards frame:
-    check_target_file_stop_codons_and_multiple_of_three(targetfile, translate_target_file=translate_target_file,
-                                                        logger=None)
+    translated_seqs_to_write, seqs_with_stop_codons_dict, seqs_needed_padding_dict = \
+        check_target_file_stop_codons_and_multiple_of_three(targetfile,
+                                                            translate_target_file=translate_target_file,
+                                                            logger=None,
+                                                            no_terminal_stop_codons=args.no_terminal_stop_codons)
     low_complexity_sequences = None
 
     if targetfile_type == 'DNA':
@@ -1588,24 +1600,26 @@ def check_targetfile_standalone(args):
                              subsequent_indent=" " * 11)
         print(fill)
 
-        low_complexity_sequences = utils.low_complexity_check(targetfile,
-                                                              targetfile_type,
-                                                              translate_target_file=False,
-                                                              window_size=args.sliding_window_size,
-                                                              entropy_value=args.complexity_minimum_threshold,
-                                                              logger=args.logger)
+        low_complexity_sequences, window_size, entropy_value = \
+            utils.low_complexity_check(targetfile,
+                                       targetfile_type,
+                                       translate_target_file=False,
+                                       window_size=args.sliding_window_size,
+                                       entropy_value=args.complexity_minimum_threshold,
+                                       logger=args.logger)
     elif targetfile_type == 'protein':
         fill = textwrap.fill(f'{"[INFO]:":10} The target file {targetfile} has been specified as containing protein '
                              f'sequences. These protein sequences will be checked for low-complexity regions', width=90,
                              subsequent_indent=" " * 11)
         print(fill)
 
-        low_complexity_sequences = utils.low_complexity_check(targetfile,
-                                                              targetfile_type,
-                                                              translate_target_file=False,
-                                                              window_size=args.sliding_window_size,
-                                                              entropy_value=args.complexity_minimum_threshold,
-                                                              logger=args.logger)
+        low_complexity_sequences, window_size, entropy_value = \
+            utils.low_complexity_check(targetfile,
+                                       targetfile_type,
+                                       translate_target_file=False,
+                                       window_size=args.sliding_window_size,
+                                       entropy_value=args.complexity_minimum_threshold,
+                                       logger=args.logger)
 
     if low_complexity_sequences:
         fill_1 = textwrap.fill(f'{"[WARNING]:":10} The target file provided ({os.path.basename(targetfile)}) contains '
@@ -1633,6 +1647,33 @@ def check_targetfile_standalone(args):
 
     else:
         print(f'{"[INFO]:":10} No sequences with low-complexity regions found.')
+
+    if seqs_with_stop_codons_dict and seqs_needed_padding_dict:
+        pass  # CJJ Todo
+    elif seqs_with_stop_codons_dict:
+        pass  # CJJ Todo
+    elif seqs_needed_padding_dict:
+        pass  # CJJ Todo
+
+    # Write a control file with current settings and any low-complexity sequence names; used as input to `hybpiper
+    # fix_targetfile`:
+    utils.write_fix_targetfile_controlfile(targetfile_type,
+                                           translate_target_file,
+                                           args.no_terminal_stop_codons,
+                                           low_complexity_sequences,
+                                           window_size,
+                                           entropy_value)
+
+
+def fix_targetfile_standalone(args):
+    """
+    Calls the function main() from module fix_targetfile
+
+    :param args: argparse namespace with subparser options for function fix_targetfile_standalone()
+    :return: None: no return value specified; default is None
+    """
+
+    fix_targetfile.main(args)
 
 
 def parse_arguments():
@@ -1662,6 +1703,7 @@ def parse_arguments():
     parser_gene_recovery_heatmap = hybpiper_subparsers.add_gene_recovery_heatmap_parser(subparsers)
     parser_check_dependencies = hybpiper_subparsers.add_check_dependencies_parser(subparsers)
     parser_check_targetfile = hybpiper_subparsers.add_check_targetfile_parser(subparsers)
+    parser_fix_targetfile = hybpiper_subparsers.add_fix_targetfile_parser(subparsers)
 
     # Set functions for subparsers:
     parser_assemble.set_defaults(func=assemble)
@@ -1671,6 +1713,7 @@ def parse_arguments():
     parser_gene_recovery_heatmap.set_defaults(func=gene_recovery_heatmap_main)
     parser_check_dependencies.set_defaults(func=check_dependencies)
     parser_check_targetfile.set_defaults(func=check_targetfile_standalone)
+    parser_fix_targetfile.set_defaults(func=fix_targetfile_standalone)
 
     # Parse and return all arguments:
     arguments = parser.parse_args()

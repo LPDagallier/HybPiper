@@ -16,6 +16,7 @@ import subprocess
 import datetime
 import logging
 import sys
+import argparse
 
 
 def log_or_print(string, logger=None, logger_level='info'):
@@ -238,7 +239,7 @@ def low_complexity_check(targetfile, targetfile_type, translate_target_file, win
                 low_entropy_seqs.add(seq.name)
                 break
 
-    return low_entropy_seqs
+    return low_entropy_seqs, window_size, entropy_value
 
 
 def pad_seq(sequence):
@@ -370,3 +371,57 @@ def worker_configurer(gene_name):
     # Add handlers to the logger
     logger_object.addHandler(console_handler)
     logger_object.addHandler(file_handler)
+
+
+def write_fix_targetfile_controlfile(targetfile_type,
+                                     translate_target_file,
+                                     no_terminal_stop_codons,
+                                     low_complexity_sequences,
+                                     sliding_window_size,
+                                     complexity_minimum_threshold):
+    """
+    Write a control file with settings and seqs to remove, as output from the command `hybpiper check_targetfile`.
+
+    :param str targetfile_type:
+    :param bool translate_target_file:
+    :param bool no_terminal_stop_codons:
+    :param lists / None low_complexity_sequences:
+    :param int sliding_window_size:
+    :param float complexity_minimum_threshold:
+    """
+
+    date_and_time = datetime.datetime.now().strftime("%Y-%m-%d-%H_%M_%S")
+
+    low_complexity_sequences_to_remove = '\t'.join(low_complexity_sequences) if low_complexity_sequences else None
+
+    with open(f'fix_targetfile_{date_and_time}.ctl', 'w') as targetfile_control_handle:
+        targetfile_control_handle.write(f'TARGETFILE_TYPE\t{targetfile_type}\n')
+        targetfile_control_handle.write(f'TRANSLATE_TARGET_FILE\t{translate_target_file}\n')
+        targetfile_control_handle.write(f'NO_TERMINAL_STOP_CODONS\t{no_terminal_stop_codons}\n')
+        targetfile_control_handle.write(f'SLIDING_WINDOW_SIZE\t{sliding_window_size}\n')
+        targetfile_control_handle.write(f'COMPLEXITY_MINIMUM_THRESHOLD\t{complexity_minimum_threshold}\n')
+        targetfile_control_handle.write(f'ALLOW_GENE_REMOVAL\tFALSE\n')
+        targetfile_control_handle.write(f'LOW_COMPLEXITY_SEQUENCES\t{low_complexity_sequences_to_remove}\n')
+
+    print(f'\n{"[INFO]:":10} The control file required for command "hybpiper fix_targetfile" has been written to\n'
+          f'           "fix_targetfile_{date_and_time}.ctl".')
+
+
+def restricted_float(input_float):
+    """
+    Checks that a provided value is a float within the range 0.0 to 1.0
+
+    From: https://stackoverflow.com/questions/12116685/\
+    how-can-i-require-my-python-scripts-argument-to-be-a-float-in
+    -a-range-using-arg
+    """
+
+    try:
+        input_float = float(input_float)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f'{input_float} not a floating-point literal')
+
+    if input_float < 0.0 or input_float > 1.0:
+        raise argparse.ArgumentTypeError(f'{input_float} not in range [0.0, 1.0]')
+
+    return input_float
