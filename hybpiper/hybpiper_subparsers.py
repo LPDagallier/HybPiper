@@ -564,6 +564,10 @@ def add_fix_targetfile_parser(subparsers):
                                         help='If more than one sequence is present for a given gene, only include '
                                              'sequences longer than this percentage of the longest gene sequence. '
                                              'Default is 0.0 (all sequences retained).')
+    parser_fix_target_file.add_argument('--keep_low_complexity_sequences', action='store_true', default=False,
+                                        help='Keep sequences that contain regions of low-complexity, as identified by '
+                                             'the command "hybpiper check_targetfile". Default is to remove these '
+                                             'sequences.')
     parser_fix_target_file.add_argument('--alignments', action='store_true', default=False,
                                         help='Create per-gene alignments for in-frame translated protein sequences.')
     parser_fix_target_file.add_argument('--concurrent_alignments', default=1, type=int, metavar='INTEGER',
