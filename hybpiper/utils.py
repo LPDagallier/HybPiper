@@ -206,7 +206,8 @@ def low_complexity_check(targetfile, targetfile_type, translate_target_file, win
     :param int or None window_size: number of characters to include in the sliding window
     :param float or None entropy_value: entropy threshold within sliding window
     :param logging.Logger logger: a logger object
-    :return set low_entropy_seqs: a set of sequences that contain low entropy substrings
+    :return set low_entropy_seqs, int window_size, float entropy_value: a set of sequences that contain low entropy
+    substrings, an integer corresponding to sliding window size, a float corresponding to the entropy value threshold
     """
 
     if targetfile_type == 'DNA' and not translate_target_file:
@@ -289,7 +290,8 @@ def check_dependencies(logger=None):
                    'samtools',
                    'bbmap.sh',
                    'bbmerge.sh',
-                   'diamond']
+                   'diamond',
+                   'mafft']
 
     log_or_print(f'{"[INFO]:":10} Checking for external dependencies:\n', logger=logger)
 
