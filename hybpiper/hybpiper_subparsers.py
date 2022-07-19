@@ -560,7 +560,8 @@ def add_fix_targetfile_parser(subparsers):
                                              'Useful to filter out sequences with frameshifts that do NOT introduce '
                                              'stop codons. 0.0 means identical sequences, 1.0 means completely '
                                              'different sequences. Default is 0.5')
-    parser_fix_target_file.add_argument('--filter_by_length_percentage', default=0.0, type=float, metavar='FLOAT',
+    parser_fix_target_file.add_argument('--filter_by_length_percentage', default=0.0, type=utils.restricted_float,
+                                        metavar='FLOAT',
                                         help='If more than one sequence is present for a given gene, only include '
                                              'sequences longer than this percentage of the longest gene sequence. '
                                              'Default is 0.0 (all sequences retained).')

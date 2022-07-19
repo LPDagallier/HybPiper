@@ -59,6 +59,7 @@ import glob
 import textwrap
 import io
 import shutil
+from hybpiper import utils
 
 # Import non-standard-library modules:
 unsuccessful_imports = []
@@ -270,20 +271,20 @@ def align_extractions_multiprocessing(unaligned_folder, output_folder, concurren
                      f'for errors!')
 
 
-def pad_seq(sequence):
-    """
-    Pads a sequence Seq object to a multiple of 3 with 'N'.
-
-    :param Bio.SeqRecord.SeqRecord sequence: sequence to pad
-    :return: Bio.SeqRecord.SeqRecord sequence padded with Ns if required, int for number of Ns added to 3' end
-    """
-
-    remainder = len(sequence.seq) % 3
-    if remainder == 0:
-        return sequence, 0
-    else:
-        sequence.seq = sequence.seq + Seq('N' * (3 - remainder))
-        return sequence, (3 - remainder)
+# def pad_seq(sequence):
+#     """
+#     Pads a sequence Seq object to a multiple of 3 with 'N'.
+#
+#     :param Bio.SeqRecord.SeqRecord sequence: sequence to pad
+#     :return: Bio.SeqRecord.SeqRecord sequence padded with Ns if required, int for number of Ns added to 3' end
+#     """
+#
+#     remainder = len(sequence.seq) % 3
+#     if remainder == 0:
+#         return sequence, 0
+#     else:
+#         sequence.seq = sequence.seq + Seq('N' * (3 - remainder))
+#         return sequence, (3 - remainder)
 
 
 def choose_best_match_translation(sequence_list, gene_to_inframe_seqs, ref_is_protein=False, maximum_distance=0.5):
@@ -351,9 +352,8 @@ def choose_best_match_translation(sequence_list, gene_to_inframe_seqs, ref_is_pr
     return seq_to_keep
 
 
-def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_protein_file, maximum_distance,
-                         filter_by_length_percentage, allow_gene_removal, keep_low_complexity_sequences,
-                         low_complexity_seq_names):
+def get_inframe_sequences(target_fasta_file, no_terminal_stop_codons, reference_protein_file, maximum_distance,
+                          allow_gene_removal):
     """
     Recovers sequences with no stop codons and full codon triplets only, if present, and writes them to a fasta file.
     Sequences without a full-length open reading frame are written to a second fasta file. Sequences with more than
@@ -366,20 +366,10 @@ def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_p
     the C-terminus.
     :param None or str reference_protein_file: path to a fasta file containing reference proteins
     :param float maximum_distance: maximum distance allowed for any frame to be selected
-    :param float filter_by_length_percentage: only include sequences longer than this % of the longest gene sequence
     :param bool allow_gene_removal: if True, allow all seqs for a given gene to be removed
-    :param bool keep_low_complexity_sequences: if True, keep sequences that contain regions of low-complexity
-    :param list low_complexity_seq_names: list of sequence names for seqs with regions of low-complexity
     :return collections.defaultdict gene_to_inframe_seq_dictionary: a dictionary of gene to SeqRecord objects for all
     fixed sequences
     """
-
-    file, ext = os.path.splitext(os.path.basename(target_fasta_file))
-    fixed_file_output = f'{file}_inframe{ext}'
-    fixed_file_output_with_stop_codons = f'{file}_stop_codons_all_frames{ext}'
-    fixed_file_output_with_undetermined_frame = f'{file}_undetermined_frames{ext}'
-    fixed_file_output_with_multiple_frames_above_maximum_distance = f'{file}_above_maximum_distance_frames{ext}'
-    fixed_file_output_low_complexity_sequences= f'{file}_low_complexity_regions{ext}'
 
     # If a file of reference proteins is provided, create a gene_name:protein dictionary:
     if reference_protein_file:
@@ -388,7 +378,11 @@ def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_p
             reference_protein_dict = dict()
             for seq in seqs:
                 gene_id = seq.name.split('-')[-1]
-                reference_protein_dict[gene_id] = seq
+                if gene_id in reference_protein_dict:
+                    logger.warning(f'{"[WARNING]:":10} A reference protein sequence has already been processed for '
+                                   f'gene {gene_id} - skipping sequence {seq.name}.')
+                else:
+                    reference_protein_dict[gene_id] = seq
         logger.info(f'{"[INFO]:":10} A fasta file of reference protein sequences has been provided, containing a '
                     f'sequence for {len(reference_protein_dict)} genes.')
 
@@ -400,8 +394,8 @@ def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_p
     sequences_with_stop_codons_all_frames = []
     sequences_with_multiple_possible_frames_above_similarity_threshold = []
     sequences_with_multiple_possible_frames_above_similarity_threshold_count = 0
-    gene_to_multiframe_seq_dictionary = defaultdict(lambda: defaultdict(list))  # nucleotide when no external prot ref
-    gene_to_inframe_seq_dictionary = defaultdict(list)  # nucleotide dict for prot alignments
+    gene_to_multiframe_seq_dictionary = defaultdict(lambda: defaultdict(list))  # nucleotide, when no external prot ref
+    gene_to_inframe_seq_dictionary = defaultdict(list)  # nucleotide dict, for prot alignments
 
     logger.info(f'{"[INFO]:":10} Identifying sequences with a single forwards open reading frame...')
     for sequence in progressbar.progressbar(sequences,
@@ -416,7 +410,8 @@ def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_p
         for frame_start in [0, 1, 2]:
             sequence_to_test = copy.deepcopy(sequence)
             sequence_to_test.seq = sequence_to_test.seq[frame_start:]
-            padded_sequence, ns_added = pad_seq(sequence_to_test)
+            # padded_sequence, ns_added = pad_seq(sequence_to_test)
+            padded_sequence, needed_padding = utils.pad_seq(sequence_to_test)
             padded_sequence_translated = padded_sequence.seq.translate()
             num_stop_codons = padded_sequence_translated.count('*')
 
@@ -428,14 +423,27 @@ def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_p
                 logger.debug(f'{"[INFO]:":10} Translated sequence {padded_sequence.name} does not contain any '
                              f'unexpected stop codons in frame {frame_start + 1}')
 
-                if ns_added == 0:
-                    seq_record = SeqRecord(Seq(padded_sequence.seq),
+                # if ns_added == 0:
+                if needed_padding:
+                    seq_record = SeqRecord(Seq(padded_sequence.seq[:-3]),
                                            id=f'{sequence.id}_frame_{frame_start + 1}',
                                            name=f'{sequence.name}_frame_{frame_start + 1}',
                                            description=f'')
                     frames_without_stop_codons_seqs.append(seq_record)
+
+                    # seq_record = SeqRecord(Seq(padded_sequence.seq),
+                    #                        id=f'{sequence.id}_frame_{frame_start + 1}',
+                    #                        name=f'{sequence.name}_frame_{frame_start + 1}',
+                    #                        description=f'')
+                    # frames_without_stop_codons_seqs.append(seq_record)
                 else:
-                    seq_record = SeqRecord(Seq(padded_sequence.seq[:-3]),
+                    # seq_record = SeqRecord(Seq(padded_sequence.seq[:-3]),
+                    #                        id=f'{sequence.id}_frame_{frame_start + 1}',
+                    #                        name=f'{sequence.name}_frame_{frame_start + 1}',
+                    #                        description=f'')
+                    # frames_without_stop_codons_seqs.append(seq_record)
+
+                    seq_record = SeqRecord(Seq(padded_sequence.seq),
                                            id=f'{sequence.id}_frame_{frame_start + 1}',
                                            name=f'{sequence.name}_frame_{frame_start + 1}',
                                            description=f'')
@@ -521,25 +529,31 @@ def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_p
                 seqs_with_undetermined_frame_count += 1
 
     # Log some info messages:
-    logger.info(f'{"[INFO]:":10} Number of sequences with at least one stop codon in all forwards frames:'
+    logger.info(f'{"[INFO]:":10} Number of sequences with at least one unexpected stop codon in all forwards frames:'
                 f' {len(sequences_with_stop_codons_all_frames)}')
 
     logger.info(f'{"[INFO]:":10} Number of sequences with multiple possible reading frames but no reference; correct '
                 f'frame undetermined: {seqs_with_undetermined_frame_count}')
 
-    logger.info(f'{"[INFO]:":10} Number of sequences with all possible reading frames are greater than minimum '
+    logger.info(f'{"[INFO]:":10} Number of sequences where all possible reading frames are greater than minimum '
                 f'distance from reference: {sequences_with_multiple_possible_frames_above_similarity_threshold_count}')
 
-    inframe_seqs_to_write = [seq for gene, sequences in gene_to_inframe_seq_dictionary.items() for seq in sequences]
+    inframe_seqs_total = [seq for gene, sequences in gene_to_inframe_seq_dictionary.items() for seq in sequences]
 
-    assert (len(inframe_seqs_to_write) + len(sequences_with_stop_codons_all_frames)) + seqs_with_undetermined_frame_count + \
-           sequences_with_multiple_possible_frames_above_similarity_threshold_count == len(sequences)
+    # Check that the various lists total to the number of input sequences:
+    assert (len(inframe_seqs_total) +
+            len(sequences_with_stop_codons_all_frames)) + \
+           seqs_with_undetermined_frame_count + \
+           sequences_with_multiple_possible_frames_above_similarity_threshold_count \
+           == len(sequences)
 
     # Check if frame_correction has removed all sequences for a given gene:
-    inframe_seqs_names = set([seq.name.split('-')[-1] for gene, sequences in gene_to_inframe_seq_dictionary.items() for
-                             seq in sequences])
+    # inframe_seqs_names = set([seq.name.split('-')[-1] for gene, sequences in gene_to_inframe_seq_dictionary.items() for
+    #                          seq in sequences])
 
-    logger.info(f'{"[INFO]:":10} Frame-corrected target file contains at least one sequence for'
+    inframe_seqs_names = set([seq.name.split('-')[-1] for seq in inframe_seqs_total])
+
+    logger.info(f'{"[INFO]:":10} The frame-corrected target file contains at least one sequence for'
                 f' {len(inframe_seqs_names)} genes')
 
     genes_removed = set([name for name in original_gene_names if name not in inframe_seqs_names])
@@ -562,6 +576,25 @@ def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_p
             logger.warning(fill)
             sys.exit(0)
 
+    return gene_to_inframe_seq_dictionary, \
+           sequences_with_stop_codons_all_frames, \
+           sequences_with_multiple_possible_frames_above_similarity_threshold, \
+           seqs_with_undetermined_frame
+
+
+def get_length_filtered_sequences(gene_to_inframe_seq_dictionary, filter_by_length_percentage):
+    """
+    Takes a dictionary of gene_id:frame-corrected-sequences. If there is more than one representative sequence per
+    gene, removes sequences below a given length percentage of the longest representative sequence. Default
+    percentage is 0.0 (all sequences retained).
+
+    :param collections.defaultdict gene_to_inframe_seq_dictionary: a dictionary of gene to SeqRecord objects for all
+    fixed (in-frame) sequences
+    :param float filter_by_length_percentage: only include sequences longer than this % of the longest gene sequence
+    :return collections.defaultdict gene_to_inframe_seq_dictionary_filtered_by_length: a dictionary of gene to
+    SeqRecord objects for all in-frame sequences, filtered by length percentage
+    """
+
     # Filter by length if more than one representative sequence for a gene:
     fill = textwrap.fill(f'{"[INFO]:":10} If there is more than one representative sequence for a given gene, '
                          f'sequences less than {filter_by_length_percentage} the length of the longest representative '
@@ -569,60 +602,97 @@ def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_p
                          width=90, subsequent_indent=' ' * 11, break_on_hyphens=False)
     logger.info(fill)
 
-    logger.info(f'{"[INFO]:":10} Number of in-frame sequences before filtering by minimum length percentage:'
-                f' {len(inframe_seqs_to_write)}')
+    inframe_seqs_total = [seq for gene, sequences in gene_to_inframe_seq_dictionary.items() for seq in sequences]
 
-    gene_to_inframe_seq_dictionary_filtered = defaultdict(list)
+    logger.info(f'{"[INFO]:":10} Number of in-frame sequences before filtering by minimum length percentage:'
+                f' {len(inframe_seqs_total)}')
+
+    gene_to_inframe_seq_dictionary_filtered_by_length = defaultdict(list)
     for gene, sequences in gene_to_inframe_seq_dictionary.items():
         if len(sequences) > 1:
             max_seq_length = len(max(sequences, key=len))
             for seq in sequences:
                 if len(seq) > (max_seq_length * filter_by_length_percentage):
-                    gene_to_inframe_seq_dictionary_filtered[gene].append(seq)
+                    gene_to_inframe_seq_dictionary_filtered_by_length[gene].append(seq)
         elif len(sequences) == 1:
-            gene_to_inframe_seq_dictionary_filtered[gene].append(sequences[0])
+            gene_to_inframe_seq_dictionary_filtered_by_length[gene].append(sequences[0])
         else:
             pass
 
-    filtered_seqs = [seq for gene, sequences in gene_to_inframe_seq_dictionary_filtered.items() for seq in sequences]
-    filtered_seqs_names = [seq.name.split('-')[-1] for gene, sequences in
-                           gene_to_inframe_seq_dictionary_filtered.items() for seq in sequences]
+    inframe_seqs_filtered_by_length = \
+        [seq for gene, sequences in gene_to_inframe_seq_dictionary_filtered_by_length.items() for seq in sequences]
+
+    # filtered_seqs_names = [seq.name.split('-')[-1] for gene, sequences in
+    #                        gene_to_inframe_seq_dictionary_filtered_by_length.items() for seq in sequences]
 
     logger.info(f'{"[INFO]:":10} Number of in-frame sequences after filtering by minimum length percentage:'
-                f' {len(filtered_seqs)}')
+                f' {len(inframe_seqs_filtered_by_length)}')
+
+    return gene_to_inframe_seq_dictionary_filtered_by_length
+
+
+def get_complexity_filtered_sequences(gene_to_inframe_seq_dictionary_filtered_by_length, allow_gene_removal,
+                                      keep_low_complexity_sequences, low_complexity_seq_names):
+    """
+    Takes a gene_id:frame-corrected-sequences-filtered-by-length dict. If sequences with low complexity regions were
+    identified via 'hybpiper check_targetfile', and keep_low_complexity_sequences is not True, remove these low
+    complexity sequences.
+
+    :param collections.defaultdict gene_to_inframe_seq_dictionary_filtered_by_length: a dictionary of gene to
+    SeqRecord objects for all fixed (in-frame) sequences, filtered by length percentage
+    :param bool allow_gene_removal: if True, allow all seqs for a given gene to be removed
+    :param bool keep_low_complexity_sequences: if True, keep sequences that contain regions of low-complexity
+    :param list low_complexity_seq_names: list of sequence names for seqs with regions of low-complexity
+    :return collections.defaultdict, list: a dictionary of gene to SeqRecord objects for all in-frame sequences,
+    filtered by length percentage (and, optionally, low-complexity sequences), list of seqs with low-complexity regions
+    """
 
     # Remove sequences with low complexity regions:
+    inframe_length_filtered_seqs = \
+        [seq for gene, sequences in gene_to_inframe_seq_dictionary_filtered_by_length.items() for seq in sequences]
+    inframe_length_filtered_seqs_names = \
+        [seq.name.split('-')[-1] for gene, sequences in gene_to_inframe_seq_dictionary_filtered_by_length.items() for
+         seq in sequences]
     low_complexity_seqs = []
-    if keep_low_complexity_sequences and low_complexity_seq_names:
+    gene_to_inframe_seq_dictionary_filtered_length_complexity = defaultdict(list)
+
+    # Create dictionary of
+    for gene, sequences in gene_to_inframe_seq_dictionary_filtered_by_length.items():
+        for seq in sequences:
+            if seq.name not in low_complexity_seq_names:
+                gene_to_inframe_seq_dictionary_filtered_length_complexity[gene].append(seq)
+            else:
+                if keep_low_complexity_sequences:
+                    gene_to_inframe_seq_dictionary_filtered_length_complexity[gene].append(seq)
+                low_complexity_seqs.append(seq)
+
+    if not low_complexity_seq_names:
+        logger.info(f'{"[INFO]:":10} No sequences with regions of low-complexity detected... ')
+
+    if low_complexity_seq_names and keep_low_complexity_sequences:
         logger.info(f'{"[INFO]:":10} Keeping sequences with regions of low-complexity... ')
-    elif low_complexity_seq_names:
-        fill = textwrap.fill(f'{"[INFO]:":10} Removing sequences with regions of low-complexity',
+
+    if low_complexity_seq_names:
+        fill = textwrap.fill(f'{"[INFO]:":10} Removing {len(low_complexity_seq_names)} sequences with regions of '
+                             f'low-complexity',
                              width=90, subsequent_indent=' ' * 11, break_on_hyphens=False)
         logger.info(fill)
-        print(f'low_complexity_seq_names is: {low_complexity_seq_names}')
 
-        logger.info(f'{"[INFO]:":10} Number of in-frame sequences before removing sequences with '
-                    f'low-complexity regions: {len(filtered_seqs)}')
+        logger.info(f'{"[INFO]:":10} Number of in-frame, length-filtered sequences before removing sequences with '
+                    f'low-complexity regions: {len(inframe_length_filtered_seqs)}')
 
-        gene_to_inframe_seq_dictionary_filtered_complexity = defaultdict(list)
-        for gene, sequences in gene_to_inframe_seq_dictionary_filtered.items():
-            for seq in sequences:
-                if seq.name not in low_complexity_seq_names:
-                    gene_to_inframe_seq_dictionary_filtered_complexity[gene].append(seq)
-                else:
-                    low_complexity_seqs.append(seq)
+        inframe_filtered_length_complexity_seqs = \
+            [seq for gene, sequences in gene_to_inframe_seq_dictionary_filtered_length_complexity.items() for seq in
+             sequences]
+        inframe_filtered_length_complexity_seqs_names = \
+            [seq.name.split('-')[-1] for seq in inframe_filtered_length_complexity_seqs]
 
-        filtered_seqs_complexity = [seq for gene, sequences in
-                                    gene_to_inframe_seq_dictionary_filtered_complexity.items()
-                                    for seq in sequences]
-        filtered_seqs_complexity_names = [seq.name.split('-')[-1] for gene, sequences in
-                                          gene_to_inframe_seq_dictionary_filtered_complexity.items()
-                                          for seq in sequences]
+        logger.info(f'{"[INFO]:":10} Number of in-frame, length-filtered sequences after removing sequences with '
+                    f'low-complexity regions: {len(inframe_filtered_length_complexity_seqs)}')
 
-        logger.info(f'{"[INFO]:":10} Number of in-frame sequences after removing sequences with '
-                    f'low-complexity regions: {len(filtered_seqs_complexity)}')
+        genes_removed = set([name for name in inframe_length_filtered_seqs_names if name not in
+                             inframe_filtered_length_complexity_seqs_names])
 
-        genes_removed = set([name for name in filtered_seqs_names if name not in filtered_seqs_complexity_names])
         if genes_removed:
             fill = textwrap.fill(f'{"[WARNING]:":10} After removing sequences with low-complexity regions, '
                                  f'the following genes have ALL representative sequences removed:',
@@ -642,36 +712,91 @@ def get_inframe_sequence(target_fasta_file, no_terminal_stop_codons, reference_p
                 logger.warning(fill)
                 sys.exit(0)
 
-    # Write output fasta files:
-    if low_complexity_seqs:
-        with open(fixed_file_output, 'w') as fixed_handle:
-            SeqIO.write(filtered_seqs_complexity, fixed_handle, 'fasta')
-        with open(fixed_file_output_low_complexity_sequences, 'w') as low_complexity_handle:
-            SeqIO.write(low_complexity_seqs, low_complexity_handle, 'fasta')
-    else:
-        with open(fixed_file_output, 'w') as fixed_handle:
-            SeqIO.write(filtered_seqs, fixed_handle, 'fasta')
-
-    with open(fixed_file_output_with_stop_codons, 'w') as stops_handle:
-        SeqIO.write(sequences_with_stop_codons_all_frames, stops_handle, 'fasta')
-
-    with open(fixed_file_output_with_undetermined_frame, 'w') as undetermined_handle:
-        SeqIO.write(seqs_with_undetermined_frame, undetermined_handle, 'fasta')
-
-    with open(fixed_file_output_with_multiple_frames_above_maximum_distance, 'w') as maximum_distance_handle:
-        SeqIO.write(sequences_with_multiple_possible_frames_above_similarity_threshold, maximum_distance_handle,
-                    'fasta')
-
-    if low_complexity_seqs:
-        return gene_to_inframe_seq_dictionary_filtered_complexity
-    else:
-        return gene_to_inframe_seq_dictionary_filtered
+    return gene_to_inframe_seq_dictionary_filtered_length_complexity, low_complexity_seqs
 
 
-def inframe_seq_alignments(gene_to_inframe_seq_dictionary, concurrent_alignments, threads_per_concurrent_alignment):
+def write_dna_output_files(target_fasta_file, gene_to_inframe_seq_dictionary_fixed_and_filtered, low_complexity_seqs,
+                           sequences_with_stop_codons_all_frames,
+                           sequences_with_multiple_possible_frames_above_similarity_threshold,
+                           seqs_with_undetermined_frame):
     """
-    Generate per-gene alignments of protein translations of each 'fixed' inframe sequence. Useful for identifying
-    problems in the 'fixed' sequences (e.g. when framshifts are present but do not introduce stop codons).
+    Writes fasta output files for the corrected target file and other lists of sequences.
+
+
+    :param str target_fasta_file: path to the target fasta file.
+    :param collections.defaultdict gene_to_inframe_seq_dictionary_fixed_and_filtered:
+    :param list low_complexity_seqs: list of seqs with low complexity regions (whether removed or not)
+    :param list sequences_with_stop_codons_all_frames: list of seqs with stop codons in all forwards frames
+    :param list sequences_with_multiple_possible_frames_above_similarity_threshold: list of seqs with more than one
+    possible forward frame, but all translatations are above a given similarity threshold with the reference protein
+    sequence
+    :param list seqs_with_undetermined_frame: list of sequences for which the correct frame couldn't be determined,
+    i.e. no good reference present and stop codons in all forwards frames
+    :return:
+    """
+
+    file, ext = os.path.splitext(os.path.basename(target_fasta_file))
+    fixed_and_filtered_target_file_filename = f'{file}_fixed{ext}'
+    seqs_with_stop_codons_all_frames_filename = f'{file}_stop_codons_all_frames{ext}'
+    seqs_with_undetermined_frame_filename = f'{file}_undetermined_frame{ext}'
+    seqs_with_multiple_frames_above_maximum_distance_filename  = f'{file}_above_maximum_distance_frames{ext}'
+    seq_with_low_complexity_regions_filename = f'{file}_low_complexity_regions{ext}'
+
+    filtered_seqs = [seq for gene, sequences in gene_to_inframe_seq_dictionary_fixed_and_filtered.items() for seq in
+                     sequences]
+
+    # Write output fasta files:
+    with open(fixed_and_filtered_target_file_filename, 'w') as fixed_handle:
+        SeqIO.write(filtered_seqs, fixed_handle, 'fasta')
+
+    if low_complexity_seqs:  # i.e. of the list isn't empty
+        with open(seq_with_low_complexity_regions_filename, 'w') as low_complexity_handle:
+            SeqIO.write(low_complexity_seqs, low_complexity_handle, 'fasta')
+
+    if sequences_with_stop_codons_all_frames:
+        with open(seqs_with_stop_codons_all_frames_filename, 'w') as stops_handle:
+            SeqIO.write(sequences_with_stop_codons_all_frames, stops_handle, 'fasta')
+
+    if seqs_with_undetermined_frame:
+        with open(seqs_with_undetermined_frame_filename, 'w') as undetermined_handle:
+            SeqIO.write(seqs_with_undetermined_frame, undetermined_handle, 'fasta')
+
+    if sequences_with_multiple_possible_frames_above_similarity_threshold:
+        with open(seqs_with_multiple_frames_above_maximum_distance_filename, 'w') as maximum_distance_handle:
+            SeqIO.write(sequences_with_multiple_possible_frames_above_similarity_threshold, maximum_distance_handle,
+                        'fasta')
+
+
+def write_aa_output_files(target_fasta_file, gene_to_protein_seq_dictionary_filtered, low_complexity_seqs):
+    """
+    Writes fasta output files for the filtered protein target file any sequences with low-complexioty regions.
+
+    :param str target_fasta_file: path to the target fasta file.
+    :param collections.defaultdict gene_to_protein_seq_dictionary_filtered:
+    :param list low_complexity_seqs: list of seqs with low complexity regions (whether removed or not)
+    :return:
+    """
+
+    file, ext = os.path.splitext(os.path.basename(target_fasta_file))
+    filtered_target_file_filename = f'{file}_fixed{ext}'
+    seq_with_low_complexity_regions_filename = f'{file}_low_complexity_regions{ext}'
+
+    filtered_seqs = [seq for gene, sequences in gene_to_protein_seq_dictionary_filtered.items() for seq in
+                     sequences]
+
+    # Write output fasta files:
+    with open(filtered_target_file_filename, 'w') as fixed_handle:
+        SeqIO.write(filtered_seqs, fixed_handle, 'fasta')
+
+    if low_complexity_seqs:  # i.e. of the list isn't empty
+        with open(seq_with_low_complexity_regions_filename, 'w') as low_complexity_handle:
+            SeqIO.write(low_complexity_seqs, low_complexity_handle, 'fasta')
+
+
+def inframe_seq_alignments_dna(gene_to_inframe_seq_dictionary, concurrent_alignments, threads_per_concurrent_alignment):
+    """
+    Generate per-gene alignments of protein translations of each 'fixed' inframe DNA sequence. Useful for identifying
+    problems in the 'fixed' sequences (e.g. when frameshifts are present but do not introduce stop codons).
 
     :param collections.defaultdict gene_to_inframe_seq_dictionary: a dictionary of gene to SeqRecord objects for all
     fixed sequences.
@@ -684,6 +809,8 @@ def inframe_seq_alignments(gene_to_inframe_seq_dictionary, concurrent_alignments
     output_folder_aligned = f'02_gene_fixed_seqs_aligned'
     createfolder(output_folder_unaligned)
     createfolder(output_folder_aligned)
+
+    logger.info(f'{"[INFO]:":10} Translating DNA sequences for protein alignments...')
 
     for gene, seqrecord_list in gene_to_inframe_seq_dictionary.items():
         translated_seqs = []
@@ -748,6 +875,24 @@ def parse_control_file(control_file):
     return control_dict
 
 
+def get_protein_dict(target_file):
+    """
+    Create a dictionary of gene_id:protein-seq-list from a protein target file
+
+    :param str target_file: path to the target file
+    :return collections.defaultdict protein_dict: a dictionary of gene_id:protein_seq_list
+    """
+
+    protein_dict = defaultdict(list)
+    with open(target_file, 'r') as target_handle:
+        seqs = SeqIO.parse(target_handle, 'fasta')
+        for seq in seqs:
+            gene_id = seq.name.split('-')[-1]
+            taxon_id = '-'.join(seq.name.split('-')[:-1])
+            protein_dict[gene_id].append(seq)
+    return protein_dict
+
+
 def check_reference_protein_file(reference_protein_file):
     """
 
@@ -790,13 +935,13 @@ def standalone():
                         help='If a given sequence can be translated in more than one forward frame without stop '
                              'codons, choose the translation that best matches the corresponding reference protein '
                              'provided in this fasta file. Sequence ids must be of the form: >Taxon-geneName')
-    parser.add_argument('--maximum_distance', default=0.5, type=float, metavar='FLOAT',
+    parser.add_argument('--maximum_distance', default=0.5, type=utils.restricted_float, metavar='FLOAT',
                         help='When comparing possible translation frames to a reference protein, the maximum distance '
                              'allowed between the translated frame and the reference sequence for any possible '
                              'translation frame to be selected. Useful to filter out sequences with frameshifts that '
                              'do NOT introduce stop codons. 0.0 means identical sequences, 1.0 means completely '
                              'different sequences. Default is 0.5')
-    parser.add_argument('--filter_by_length_percentage', default=0.0, type=float, metavar='FLOAT',
+    parser.add_argument('--filter_by_length_percentage', default=0.0, type=utils.restricted_float, metavar='FLOAT',
                         help='If more than one sequence is present for a given gene, only include sequences longer '
                              'than this percentage of the longest gene sequence. Default is 0.0 (all sequences '
                              'retained)')
@@ -824,8 +969,6 @@ def main(args):
 
     :param argparse.Namespace args:
     """
-
-    # Check targefile matches control file tupe or exit
 
     logger.info(f'{"[INFO]:":10} Script was called with these arguments:')
     fill = textwrap.fill(' '.join(sys.argv[1:]), width=90, initial_indent=' ' * 11, subsequent_indent=' ' * 11,
@@ -883,8 +1026,8 @@ def main(args):
     allow_gene_removal = args.allow_gene_removal if \
         args.allow_gene_removal else True if control_dict['ALLOW_GENE_REMOVAL'] == 'True' else False
 
-    low_complexity_seq_names = control_dict['LOW_COMPLEXITY_SEQUENCES'] if control_dict['LOW_COMPLEXITY_SEQUENCES'][0] \
-                                                                           != 'None' else ''
+    low_complexity_seq_names = control_dict['LOW_COMPLEXITY_SEQUENCES'] if \
+        control_dict['LOW_COMPLEXITY_SEQUENCES'][0] != 'None' else ''
 
     logger.info(f'{"[INFO]:":10} Terminal stop codon not allowed: {no_terminal_stop_codons}')
     logger.info(f'{"[INFO]:":10} Allow removal of all representative sequences for a given gene:'
@@ -892,20 +1035,54 @@ def main(args):
     logger.info(f'{"[INFO]:":10} Number of sequences with low-complexity regions: {len(low_complexity_seq_names)}')
 
     if targetfile_type == 'DNA':
-        gene_to_inframe_seq_dictionary = get_inframe_sequence(targetfile,
-                                                              no_terminal_stop_codons,
-                                                              args.reference_protein_file,
-                                                              args.maximum_distance,
-                                                              args.filter_by_length_percentage,
-                                                              allow_gene_removal,
-                                                              args.keep_low_complexity_sequences,
-                                                              low_complexity_seq_names)
+        gene_to_inframe_seq_dictionary,\
+            sequences_with_stop_codons_all_frames,\
+            sequences_with_multiple_possible_frames_above_similarity_threshold,\
+            seqs_with_undetermined_frame = \
+            get_inframe_sequences(targetfile,
+                                  no_terminal_stop_codons,
+                                  args.reference_protein_file,
+                                  args.maximum_distance,
+                                  allow_gene_removal)
 
-        if args.alignments:
-            inframe_seq_alignments(gene_to_inframe_seq_dictionary,
+        gene_to_inframe_seq_dictionary_filtered_by_length = \
+            get_length_filtered_sequences(gene_to_inframe_seq_dictionary,
+                                          args.filter_by_length_percentage)
+
+        gene_to_inframe_seq_dictionary_filtered_by_length_and_complexity, low_complexity_seqs = \
+            get_complexity_filtered_sequences(gene_to_inframe_seq_dictionary_filtered_by_length,
+                                              allow_gene_removal,
+                                              args.keep_low_complexity_sequences,
+                                              low_complexity_seq_names)
+
+        write_dna_output_files(targetfile,
+                               gene_to_inframe_seq_dictionary_filtered_by_length_and_complexity,
+                               low_complexity_seqs,
+                               sequences_with_stop_codons_all_frames,
+                               sequences_with_multiple_possible_frames_above_similarity_threshold,
+                               seqs_with_undetermined_frame)
+
+    if targetfile_type == 'protein':
+        gene_to_protein_seq_dictionary = get_protein_dict(targetfile)
+
+        gene_to_protein_seq_dictionary_filtered_by_length = \
+            get_length_filtered_sequences(gene_to_protein_seq_dictionary,
+                                          args.filter_by_length_percentage)
+
+        gene_to_protein_seq_dictionary_filtered_by_length_and_complexity, low_complexity_seqs = \
+            get_complexity_filtered_sequences(gene_to_protein_seq_dictionary_filtered_by_length,
+                                              allow_gene_removal,
+                                              args.keep_low_complexity_sequences,
+                                              low_complexity_seq_names)
+
+        write_aa_output_files(targetfile,
+                              gene_to_protein_seq_dictionary_filtered_by_length_and_complexity,
+                              low_complexity_seqs)
+
+    if args.alignments:
+        inframe_seq_alignments_dna(gene_to_inframe_seq_dictionary_filtered_by_length_and_complexity,
                                    args.concurrent_alignments,
                                    args.threads_per_concurrent_alignment)
-
 
 ########################################################################################################################
 ########################################################################################################################
