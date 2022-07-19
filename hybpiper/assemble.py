@@ -246,6 +246,8 @@ def check_target_file_stop_codons_and_multiple_of_three(targetfile,
                                                         translate_target_file=False,
                                                         logger=None):
     """
+    Takes a nucleotide target file and checks for unexpected stop codons when seqs are translated in the first
+    forward frame. Also checks whether a seq is a multiple of three (i.e. whole codons only).
 
     :param str targetfile: path to the targetfile
     :param logging.Logger logger: a logger object
@@ -289,8 +291,9 @@ def check_target_file_stop_codons_and_multiple_of_three(targetfile,
                         seqs_with_terminal_stop_codon_dict.items() for seq in target_file_sequence_list]
             fill = textwrap.fill(
                 f'{"[INFO]:":10} There are {len(seq_list)} sequences in your target file that contain a single '
-                f'terminal stop codon. These are: ', width=90,
-                subsequent_indent=' ' * 11)
+                f'terminal stop codon. Sequence names can be found in the sample log file (if running "hybpiper '
+                f'assemble") or printed below (if running "hybpiper check_targetfile"). ',
+                width=90, subsequent_indent=' ' * 11)
             log_or_print(f'{fill}\n', logger=logger, logger_level='debug')
             fill = textwrap.fill(f'{", ".join(seq_list)}', width=90, initial_indent=' ' * 11,
                                  subsequent_indent=' ' * 11, break_on_hyphens=False)
@@ -302,8 +305,9 @@ def check_target_file_stop_codons_and_multiple_of_three(targetfile,
             fill = textwrap.fill(
                 f'{"[WARNING]:":10} There are {len(seq_list)} sequences in your target file that contain unexpected '
                 f'stop codons when translated in the first forwards frame. If your target file contains only '
-                f'protein-coding sequences, please check these sequences. Sequence names can be found in the sample '
-                f'log file (if running "hybpiper assemble") or printed below (if running "hybpiper check_targetfile").',
+                f'protein-coding sequences, please check these sequences, and/or run "hybpiper fix_targetfile". '
+                f'Sequence names can be found in the sample log file (if running "hybpiper assemble") or printed '
+                f'below (if running "hybpiper check_targetfile").',
                 width=90, subsequent_indent=' ' * 11)
             log_or_print(f'{fill}\n', logger=logger)
             fill = textwrap.fill(f'{", ".join(seq_list)}', width=90, initial_indent=' ' * 11,
@@ -315,9 +319,10 @@ def check_target_file_stop_codons_and_multiple_of_three(targetfile,
                         in target_file_sequence_list]
             fill = textwrap.fill(
                 f'{"[WARNING]:":10} There are {len(seq_list)} sequences in your target file that are not multiples of '
-                f'three. If your target file contains only protein-coding sequences, please check these sequences. '
-                f'Sequence names can be found in the sample log file (if running "hybpiper assemble") or printed '
-                f'below (if running "hybpiper check_targetfile").', width=90, subsequent_indent=' ' * 11)
+                f'three. If your target file contains only protein-coding sequences, please check these sequences, '
+                f'and/or run "hybpiper fix_targetfile". Sequence names can be found in the sample log file (if '
+                f'running "hybpiper assemble") or printed below (if running "hybpiper check_targetfile").',
+                width=90, subsequent_indent=' ' * 11)
             log_or_print(f'{fill}\n', logger=logger)
             fill = textwrap.fill(f'{", ".join(seq_list)}', width=90, initial_indent=' ' * 11,
                                  subsequent_indent=' ' * 11, break_on_hyphens=False)
@@ -1630,7 +1635,8 @@ def check_targetfile_standalone(args):
                                subsequent_indent=" " * 11)
 
         fill_2 = textwrap.fill(f'1) Remove these sequence from your target file, ensuring that your file still '
-                               f'contains other representative sequences for the corresponding genes.', width=90,
+                               f'contains other representative sequences for the corresponding genes. This can be '
+                               f'done manually, or via the command "hybpiper fix_targetfile".', width=90,
                                initial_indent=" " * 11, subsequent_indent=" " * 14)
 
         fill_3 = textwrap.fill(f'2) Start the run using the parameter "--timeout_assemble" (e.g. "--timeout_assemble '
@@ -1648,12 +1654,18 @@ def check_targetfile_standalone(args):
     else:
         print(f'{"[INFO]:":10} No sequences with low-complexity regions found.')
 
-    if seqs_with_stop_codons_dict and seqs_needed_padding_dict:
-        pass  # CJJ Todo
-    elif seqs_with_stop_codons_dict:
-        pass  # CJJ Todo
-    elif seqs_needed_padding_dict:
-        pass  # CJJ Todo
+    # if seqs_with_stop_codons_dict and seqs_needed_padding_dict:
+    #     pass  # CJJ Todo
+    #     fill_1 = textwrap.fill(f'{"[WARNING]:":10} The target file provided ({os.path.basename(targetfile)}) contains '
+    #                            f'sequences with low-complexity regions. The sequence names are printed below. These '
+    #                            f'sequences can cause problems when running HybPiper, '
+    #                            f'see https://github.com/mossmatters/HybPiper/wiki/Troubleshooting,-common-issues,'
+    #                            f'-and-recommendations. We recommend one of the following approaches:', width=90,
+    #                            subsequent_indent=" " * 11)
+    # elif seqs_with_stop_codons_dict:
+    #     pass  # CJJ Todo
+    # elif seqs_needed_padding_dict:
+    #     pass  # CJJ Todo
 
     # Write a control file with current settings and any low-complexity sequence names; used as input to `hybpiper
     # fix_targetfile`:
@@ -1670,6 +1682,7 @@ def fix_targetfile_standalone(args):
     Calls the function main() from module fix_targetfile
 
     :param args: argparse namespace with subparser options for function fix_targetfile_standalone()
+    :return: None: no return value specified; default is None
     :return: None: no return value specified; default is None
     """
 

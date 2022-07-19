@@ -146,6 +146,7 @@ def setup_logger(name, log_file, console_level=logging.INFO, file_level=logging.
 
 
 # Create logger(s):
+print(sys.argv)
 logger = setup_logger(__name__, 'fix_targetfile')
 
 ########################################################################################################################
@@ -895,8 +896,41 @@ def get_protein_dict(target_file):
 
 def check_reference_protein_file(reference_protein_file):
     """
+    Checks that the fasta headers in the reference protein file (if provided) are formatted correctly
 
+    :param str or None reference_protein_file: if str, path to the reference target file
+    :return:
     """
+
+    if reference_protein_file:
+        logger.info(f'{"[INFO]:":10} Checking formating of the reference protein file provided...')
+
+        # with open(targetfile, 'r') as target_file_handle:
+        #     seqs = list(SeqIO.parse(target_file_handle, 'fasta'))
+        #     incorrectly_formatted_fasta_headers = []
+        #     check_for_duplicate_genes_dict = {}
+        #     for seq in seqs:
+        #         if seq.name in check_for_duplicate_genes_dict:
+        #             check_for_duplicate_genes_dict[seq.name] += 1
+        #         else:
+        #             check_for_duplicate_genes_dict[seq.name] = 1
+        #         if not re.match('.+-[^-]+', seq.name):
+        #             incorrectly_formatted_fasta_headers.append(seq.name)
+        #         gene_id = re.split('-', seq.name)[-1]
+        #         gene_lists[gene_id].append(seq)
+        #
+        # if incorrectly_formatted_fasta_headers:
+        #     seq_list = ' '.join(incorrectly_formatted_fasta_headers)
+        #     log_or_print(
+        #         f'{"[ERROR!]:":10} The following sequences in your target file have incorrectly formatted fasta '
+        #         f'headers:\n', logger=logger, logger_level='error')
+        #     fill = textwrap.fill(f'{seq_list}')
+        #     log_or_print(textwrap.indent(fill, ' ' * 11), logger=logger)
+        #     log_or_print('', logger=logger)
+        #     sys.exit(1)  # target file fasta header formatting should be fixed!
+        # else:
+        #     log_or_print(f'{"[INFO]:":10} The target file FASTA header formatting looks good!', logger=logger)
+
 
     print('TO DO - check ref protein file!')
 
@@ -974,18 +1008,6 @@ def main(args):
     fill = textwrap.fill(' '.join(sys.argv[1:]), width=90, initial_indent=' ' * 11, subsequent_indent=' ' * 11,
                          break_on_hyphens=False)
     logger.info(f'{fill}\n')
-
-    # Check for any external executables:
-    logger.info(f'{"[INFO]:":10} Checking for external dependencies:')
-    executables = ['mafft']
-
-    for exe in executables:
-        exe_loc = shutil.which(exe)
-        if exe_loc:
-            logger.info(f'{"[INFO]:":10} {exe} found at {exe_loc}')
-        else:
-            logger.info(f'{"[ERROR]:":10}{exe:20} not found in your $PATH!')
-            sys.exit(1)
 
     # Parse the control file
     control_dict = parse_control_file(args.control_file)
