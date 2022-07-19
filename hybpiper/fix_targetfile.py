@@ -147,7 +147,8 @@ def setup_logger(name, log_file, console_level=logging.INFO, file_level=logging.
 
 # Create logger(s):
 print(sys.argv)
-logger = setup_logger(__name__, 'fix_targetfile')
+if sys.argv[1] == 'fix_targetfile':
+    logger = setup_logger(__name__, 'fix_targetfile')
 
 ########################################################################################################################
 ########################################################################################################################
