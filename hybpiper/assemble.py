@@ -1655,13 +1655,6 @@ def check_targetfile_standalone(args):
     else:
         print(f'{"[INFO]:":10} No sequences with low-complexity regions found.')
 
-    # if seqs_with_stop_codons_dict and seqs_needed_padding_dict:
-    #     pass  # CJJ Todo
-    # elif seqs_with_stop_codons_dict:
-    #     pass  # CJJ Todo
-    # elif seqs_needed_padding_dict:
-    #     pass  # CJJ Todo
-
     # Write a control file with current settings and any low-complexity sequence names; used as input to `hybpiper
     # fix_targetfile`:
     utils.write_fix_targetfile_controlfile(targetfile_type,
