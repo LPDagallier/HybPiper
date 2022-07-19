@@ -479,8 +479,7 @@ def add_check_targetfile_parser(subparsers):
     """
 
     parser_check_target_file = subparsers.add_parser('check_targetfile',
-                                                     help='Check the target file for sequences with low-complexity '
-                                                          'regions, then exit')
+                                                     help='Check the target file for issues, then exit')
     group_1 = parser_check_target_file.add_mutually_exclusive_group(required=True)
     group_1.add_argument('--targetfile_dna', '-t_dna',
                          dest='targetfile_dna',
@@ -523,10 +522,7 @@ def add_fix_targetfile_parser(subparsers):
     """
 
     parser_fix_target_file = subparsers.add_parser('fix_targetfile',
-                                                   help='Fix the target file: optionally remove sequences with '
-                                                        'low-complexity regions, nucleotide sequences with '
-                                                        'undetermined reading frames, sequences beneath a given '
-                                                        'length threshold.')
+                                                   help='Fix the target file, then exit')
     group_1 = parser_fix_target_file.add_mutually_exclusive_group(required=True)
     group_1.add_argument('--targetfile_dna', '-t_dna',
                          dest='targetfile_dna',
