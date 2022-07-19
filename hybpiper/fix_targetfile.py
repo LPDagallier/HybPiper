@@ -146,7 +146,6 @@ def setup_logger(name, log_file, console_level=logging.INFO, file_level=logging.
 
 
 # Create logger(s):
-print(sys.argv)
 if sys.argv[1] == 'fix_targetfile':
     logger = setup_logger(__name__, 'fix_targetfile')
 
@@ -273,22 +272,6 @@ def align_extractions_multiprocessing(unaligned_folder, output_folder, concurren
                      f'for errors!')
 
 
-# def pad_seq(sequence):
-#     """
-#     Pads a sequence Seq object to a multiple of 3 with 'N'.
-#
-#     :param Bio.SeqRecord.SeqRecord sequence: sequence to pad
-#     :return: Bio.SeqRecord.SeqRecord sequence padded with Ns if required, int for number of Ns added to 3' end
-#     """
-#
-#     remainder = len(sequence.seq) % 3
-#     if remainder == 0:
-#         return sequence, 0
-#     else:
-#         sequence.seq = sequence.seq + Seq('N' * (3 - remainder))
-#         return sequence, (3 - remainder)
-
-
 def choose_best_match_translation(sequence_list, gene_to_inframe_seqs, ref_is_protein=False, maximum_distance=0.5):
     """
     Compares translations from multiple frames to a reference protein sequence via a distance matrix, and selects the
@@ -412,7 +395,6 @@ def get_inframe_sequences(target_fasta_file, no_terminal_stop_codons, reference_
         for frame_start in [0, 1, 2]:
             sequence_to_test = copy.deepcopy(sequence)
             sequence_to_test.seq = sequence_to_test.seq[frame_start:]
-            # padded_sequence, ns_added = pad_seq(sequence_to_test)
             padded_sequence, needed_padding = utils.pad_seq(sequence_to_test)
             padded_sequence_translated = padded_sequence.seq.translate()
             num_stop_codons = padded_sequence_translated.count('*')
@@ -433,18 +415,7 @@ def get_inframe_sequences(target_fasta_file, no_terminal_stop_codons, reference_
                                            description=f'')
                     frames_without_stop_codons_seqs.append(seq_record)
 
-                    # seq_record = SeqRecord(Seq(padded_sequence.seq),
-                    #                        id=f'{sequence.id}_frame_{frame_start + 1}',
-                    #                        name=f'{sequence.name}_frame_{frame_start + 1}',
-                    #                        description=f'')
-                    # frames_without_stop_codons_seqs.append(seq_record)
                 else:
-                    # seq_record = SeqRecord(Seq(padded_sequence.seq[:-3]),
-                    #                        id=f'{sequence.id}_frame_{frame_start + 1}',
-                    #                        name=f'{sequence.name}_frame_{frame_start + 1}',
-                    #                        description=f'')
-                    # frames_without_stop_codons_seqs.append(seq_record)
-
                     seq_record = SeqRecord(Seq(padded_sequence.seq),
                                            id=f'{sequence.id}_frame_{frame_start + 1}',
                                            name=f'{sequence.name}_frame_{frame_start + 1}',
@@ -550,9 +521,6 @@ def get_inframe_sequences(target_fasta_file, no_terminal_stop_codons, reference_
            == len(sequences)
 
     # Check if frame_correction has removed all sequences for a given gene:
-    # inframe_seqs_names = set([seq.name.split('-')[-1] for gene, sequences in gene_to_inframe_seq_dictionary.items() for
-    #                          seq in sequences])
-
     inframe_seqs_names = set([seq.name.split('-')[-1] for seq in inframe_seqs_total])
 
     logger.info(f'{"[INFO]:":10} The frame-corrected target file contains at least one sequence for'
@@ -623,9 +591,6 @@ def get_length_filtered_sequences(gene_to_inframe_seq_dictionary, filter_by_leng
 
     inframe_seqs_filtered_by_length = \
         [seq for gene, sequences in gene_to_inframe_seq_dictionary_filtered_by_length.items() for seq in sequences]
-
-    # filtered_seqs_names = [seq.name.split('-')[-1] for gene, sequences in
-    #                        gene_to_inframe_seq_dictionary_filtered_by_length.items() for seq in sequences]
 
     logger.info(f'{"[INFO]:":10} Number of in-frame sequences after filtering by minimum length percentage:'
                 f' {len(inframe_seqs_filtered_by_length)}')
@@ -827,6 +792,36 @@ def inframe_seq_alignments_dna(gene_to_inframe_seq_dictionary, concurrent_alignm
     align_extractions_multiprocessing(output_folder_unaligned,
                                       output_folder_aligned,
                                       concurrent_alignments,
+
+                                      threads_per_concurrent_alignment)
+
+def inframe_seq_alignments_aa(gene_to_protein_seq_dictionary, concurrent_alignments, threads_per_concurrent_alignment):
+    """
+    Generate per-gene alignments of protein seqs. Useful for identifying any problems in the filtere sequences.
+
+    :param collections.defaultdict gene_to_protein_seq_dictionary: a dictionary of gene to SeqRecord objects for all
+    fixed sequences.
+    :param int concurrent_alignments: number of alignments to run concurrently.
+    :param int threads_per_concurrent_alignment: Number of threads to run each concurrent alignment with.
+    :return:
+    """
+
+    output_folder_unaligned = f'01_gene_protein_seqs_unaligned'
+    output_folder_aligned = f'02_gene_protein_seqs_aligned'
+    createfolder(output_folder_unaligned)
+    createfolder(output_folder_aligned)
+
+    logger.info(f'{"[INFO]:":10} Translating DNA sequences for protein alignments...')
+
+    for gene, seqrecord_list in gene_to_protein_seq_dictionary.items():
+        with open(f'{output_folder_unaligned}/{gene}_unaligned.fasta', 'w') as unaligned_handle:
+            SeqIO.write(seqrecord_list, unaligned_handle, 'fasta')
+
+    logger.info(f'{"[INFO]:":10} Running alignments for {len(gene_to_protein_seq_dictionary)} genes...')
+
+    align_extractions_multiprocessing(output_folder_unaligned,
+                                      output_folder_aligned,
+                                      concurrent_alignments,
                                       threads_per_concurrent_alignment)
 
 
@@ -872,8 +867,6 @@ def parse_control_file(control_file):
 
     logger.info(f'{"[INFO]:":10} Control file parsed!')
 
-    print(control_dict)
-
     return control_dict
 
 
@@ -890,7 +883,6 @@ def get_protein_dict(target_file):
         seqs = SeqIO.parse(target_handle, 'fasta')
         for seq in seqs:
             gene_id = seq.name.split('-')[-1]
-            taxon_id = '-'.join(seq.name.split('-')[:-1])
             protein_dict[gene_id].append(seq)
     return protein_dict
 
@@ -904,36 +896,34 @@ def check_reference_protein_file(reference_protein_file):
     """
 
     if reference_protein_file:
-        logger.info(f'{"[INFO]:":10} Checking formating of the reference protein file provided...')
+        logger.info(f'{"[INFO]:":10} Checking formatting of the reference protein file provided...')
 
-        # with open(targetfile, 'r') as target_file_handle:
-        #     seqs = list(SeqIO.parse(target_file_handle, 'fasta'))
-        #     incorrectly_formatted_fasta_headers = []
-        #     check_for_duplicate_genes_dict = {}
-        #     for seq in seqs:
-        #         if seq.name in check_for_duplicate_genes_dict:
-        #             check_for_duplicate_genes_dict[seq.name] += 1
-        #         else:
-        #             check_for_duplicate_genes_dict[seq.name] = 1
-        #         if not re.match('.+-[^-]+', seq.name):
-        #             incorrectly_formatted_fasta_headers.append(seq.name)
-        #         gene_id = re.split('-', seq.name)[-1]
-        #         gene_lists[gene_id].append(seq)
-        #
-        # if incorrectly_formatted_fasta_headers:
-        #     seq_list = ' '.join(incorrectly_formatted_fasta_headers)
-        #     log_or_print(
-        #         f'{"[ERROR!]:":10} The following sequences in your target file have incorrectly formatted fasta '
-        #         f'headers:\n', logger=logger, logger_level='error')
-        #     fill = textwrap.fill(f'{seq_list}')
-        #     log_or_print(textwrap.indent(fill, ' ' * 11), logger=logger)
-        #     log_or_print('', logger=logger)
-        #     sys.exit(1)  # target file fasta header formatting should be fixed!
-        # else:
-        #     log_or_print(f'{"[INFO]:":10} The target file FASTA header formatting looks good!', logger=logger)
+        with open(reference_protein_file, 'r') as reference_file_handle:
+            seqs = list(SeqIO.parse(reference_file_handle, 'fasta'))
+            incorrectly_formatted_fasta_headers = []
+            for seq in seqs:
+                if not re.match('.+-[^-]+', seq.name):
+                    incorrectly_formatted_fasta_headers.append(seq.name)
 
+        if incorrectly_formatted_fasta_headers:
+            seq_list = ' '.join(incorrectly_formatted_fasta_headers)
+            fill = textwrap.fill(f'{"[ERROR]:":10} The following sequences in your reference protein file have '
+                                 f'incorrectly formatted fasta headers:',
+                                 width=90, subsequent_indent=' ' * 11)
+            logger.error(fill)
+            logger.error('')
 
-    print('TO DO - check ref protein file!')
+            fill = textwrap.fill(f'{seq_list}')
+            logger.error(textwrap.indent(fill, ' ' * 11))
+            logger.error('')
+
+            fill = textwrap.fill(f'{"[ERROR]:":10} Please ensure that all sequence fasta headers are of the form: '
+                                 f'>Taxon-geneName',
+                                 width=90, subsequent_indent=' ' * 11)
+            logger.error(fill)
+            sys.exit(1)  # reference protein file fasta header formatting should be fixed!
+        else:
+            logger.info(f'{"[INFO]:":10} The reference protein file fasta header formatting looks good!')
 
 
 ########################################################################################################################
@@ -1085,6 +1075,11 @@ def main(args):
                                sequences_with_multiple_possible_frames_above_similarity_threshold,
                                seqs_with_undetermined_frame)
 
+        if args.alignments:
+            inframe_seq_alignments_dna(gene_to_inframe_seq_dictionary_filtered_by_length_and_complexity,
+                                       args.concurrent_alignments,
+                                       args.threads_per_concurrent_alignment)
+
     if targetfile_type == 'protein':
         gene_to_protein_seq_dictionary = get_protein_dict(targetfile)
 
@@ -1102,10 +1097,10 @@ def main(args):
                               gene_to_protein_seq_dictionary_filtered_by_length_and_complexity,
                               low_complexity_seqs)
 
-    if args.alignments:
-        inframe_seq_alignments_dna(gene_to_inframe_seq_dictionary_filtered_by_length_and_complexity,
-                                   args.concurrent_alignments,
-                                   args.threads_per_concurrent_alignment)
+        if args.alignments:
+            inframe_seq_alignments_aa(gene_to_protein_seq_dictionary_filtered_by_length_and_complexity,
+                                      args.concurrent_alignments,
+                                      args.threads_per_concurrent_alignment)
 
 ########################################################################################################################
 ########################################################################################################################

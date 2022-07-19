@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-HybPiper Version 2.0 release candidate (May 2022)
+HybPiper Version 2.0 release candidate (July 2022)
 
 ########################################################################################################################
 ############################################## NOTES ON VERSION 2.0 ####################################################
@@ -17,7 +17,8 @@ followed by a subcommand to run different parts of the pipeline. The available s
     recovery_heatmap    Create a gene recovery heatmap for the HybPiper run
     paralog_retriever   Retrieve paralog sequences for a given gene, for all samples
     check_dependencies  Run a check for all pipeline dependencies and exit
-    check_targetfile    Check the target file for sequences with low-complexity regions, then exit
+    check_targetfile    Check the target file for issues, then exit
+    fix_targetfile      Fix the target file, then exit
 
 To view available parameters and help for any subcommand, simply type e.g. 'hybpiper assemble -h'.
 
@@ -1656,12 +1657,6 @@ def check_targetfile_standalone(args):
 
     # if seqs_with_stop_codons_dict and seqs_needed_padding_dict:
     #     pass  # CJJ Todo
-    #     fill_1 = textwrap.fill(f'{"[WARNING]:":10} The target file provided ({os.path.basename(targetfile)}) contains '
-    #                            f'sequences with low-complexity regions. The sequence names are printed below. These '
-    #                            f'sequences can cause problems when running HybPiper, '
-    #                            f'see https://github.com/mossmatters/HybPiper/wiki/Troubleshooting,-common-issues,'
-    #                            f'-and-recommendations. We recommend one of the following approaches:', width=90,
-    #                            subsequent_indent=" " * 11)
     # elif seqs_with_stop_codons_dict:
     #     pass  # CJJ Todo
     # elif seqs_needed_padding_dict:
