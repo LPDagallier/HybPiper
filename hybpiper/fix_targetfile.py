@@ -146,8 +146,10 @@ def setup_logger(name, log_file, console_level=logging.INFO, file_level=logging.
 
 
 # Create logger(s):
-if sys.argv[1] == 'fix_targetfile':
-    logger = setup_logger(__name__, 'fix_targetfile')
+# if sys.argv[1] == 'fix_targetfile':
+#     logger = setup_logger(__name__, 'fix_targetfile')
+# logger = logging.getLogger(f'hybpiper.{__name__}')
+# logger = False
 
 ########################################################################################################################
 ########################################################################################################################
@@ -191,7 +193,8 @@ def done_callback(future_returned):
     return result
 
 
-def align(fasta_file, algorithm, output_folder, counter, lock, num_files_to_process, threads_per_concurrent_alignment):
+def align(fasta_file, algorithm, output_folder, counter, lock, num_files_to_process,
+          threads_per_concurrent_alignment, logger=None):
     """
     Uses mafft to align a fasta file of sequences, using the algorithm and number of threads provided. Returns filename
     of the alignment produced.
@@ -203,6 +206,7 @@ def align(fasta_file, algorithm, output_folder, counter, lock, num_files_to_proc
     :param lock:
     :param num_files_to_process:
     :param threads_per_concurrent_alignment:
+    :param logging.Logger logger: a logger object
     :return:
     """
 
@@ -230,7 +234,7 @@ def align(fasta_file, algorithm, output_folder, counter, lock, num_files_to_proc
 
 
 def align_extractions_multiprocessing(unaligned_folder, output_folder, concurrent_alignments,
-                                      threads_per_concurrent_alignment):
+                                      threads_per_concurrent_alignment, logger=None):
     """
     Generate alignments via function <align> using multiprocessing.
 
@@ -238,6 +242,7 @@ def align_extractions_multiprocessing(unaligned_folder, output_folder, concurren
     :param output_folder:
     :param concurrent_alignments:
     :param threads_per_concurrent_alignment:
+    :param logging.Logger logger: a logger object
     :return:
     """
 
@@ -255,7 +260,8 @@ def align_extractions_multiprocessing(unaligned_folder, output_folder, concurren
                                       counter,
                                       lock,
                                       num_files_to_process=len(alignments),
-                                      threads_per_concurrent_alignment=threads_per_concurrent_alignment)
+                                      threads_per_concurrent_alignment=threads_per_concurrent_alignment,
+                                      logger=logger)
                           for alignment in alignments]
         for future in future_results:
             future.add_done_callback(done_callback)
@@ -272,7 +278,8 @@ def align_extractions_multiprocessing(unaligned_folder, output_folder, concurren
                      f'for errors!')
 
 
-def choose_best_match_translation(sequence_list, gene_to_inframe_seqs, ref_is_protein=False, maximum_distance=0.5):
+def choose_best_match_translation(sequence_list, gene_to_inframe_seqs, ref_is_protein=False, maximum_distance=0.5,
+                                  logger=None):
     """
     Compares translations from multiple frames to a reference protein sequence via a distance matrix, and selects the
     translation frame that is most similar.
@@ -282,6 +289,7 @@ def choose_best_match_translation(sequence_list, gene_to_inframe_seqs, ref_is_pr
     gene references
     :param bool ref_is_protein: if True, the reference sequence is amino acids from external fasta file
     :param float maximum_distance: maximum distance allowed for any frame to be selected
+    :param logging.Logger logger: a logger object
     :return:
     """
 
@@ -338,7 +346,7 @@ def choose_best_match_translation(sequence_list, gene_to_inframe_seqs, ref_is_pr
 
 
 def get_inframe_sequences(target_fasta_file, no_terminal_stop_codons, reference_protein_file, maximum_distance,
-                          allow_gene_removal):
+                          allow_gene_removal, logger=None):
     """
     Recovers sequences with no stop codons and full codon triplets only, if present, and writes them to a fasta file.
     Sequences without a full-length open reading frame are written to a second fasta file. Sequences with more than
@@ -352,6 +360,7 @@ def get_inframe_sequences(target_fasta_file, no_terminal_stop_codons, reference_
     :param None or str reference_protein_file: path to a fasta file containing reference proteins
     :param float maximum_distance: maximum distance allowed for any frame to be selected
     :param bool allow_gene_removal: if True, allow all seqs for a given gene to be removed
+    :param logging.Logger logger: a logger object
     :return collections.defaultdict gene_to_inframe_seq_dictionary: a dictionary of gene to SeqRecord objects for all
     fixed sequences
     """
@@ -445,7 +454,8 @@ def get_inframe_sequences(target_fasta_file, no_terminal_stop_codons, reference_
                     best_match_seq = choose_best_match_translation(frames_without_stop_codons_seqs,
                                                                    ref_protein,
                                                                    ref_is_protein=True,
-                                                                   maximum_distance=maximum_distance)
+                                                                   maximum_distance=maximum_distance,
+                                                                   logger=logger)
                     if best_match_seq:
                         best_match_seq.name = '_'.join(best_match_seq.name.split('_')[:-2])
                         best_match_seq.id = '_'.join(best_match_seq.id.split('_')[:-2])
@@ -552,7 +562,7 @@ def get_inframe_sequences(target_fasta_file, no_terminal_stop_codons, reference_
            seqs_with_undetermined_frame
 
 
-def get_length_filtered_sequences(gene_to_inframe_seq_dictionary, filter_by_length_percentage):
+def get_length_filtered_sequences(gene_to_inframe_seq_dictionary, filter_by_length_percentage, logger=None):
     """
     Takes a dictionary of gene_id:frame-corrected-sequences. If there is more than one representative sequence per
     gene, removes sequences below a given length percentage of the longest representative sequence. Default
@@ -561,6 +571,7 @@ def get_length_filtered_sequences(gene_to_inframe_seq_dictionary, filter_by_leng
     :param collections.defaultdict gene_to_inframe_seq_dictionary: a dictionary of gene to SeqRecord objects for all
     fixed (in-frame) sequences
     :param float filter_by_length_percentage: only include sequences longer than this % of the longest gene sequence
+    :param logging.Logger logger: a logger object
     :return collections.defaultdict gene_to_inframe_seq_dictionary_filtered_by_length: a dictionary of gene to
     SeqRecord objects for all in-frame sequences, filtered by length percentage
     """
@@ -599,7 +610,7 @@ def get_length_filtered_sequences(gene_to_inframe_seq_dictionary, filter_by_leng
 
 
 def get_complexity_filtered_sequences(gene_to_inframe_seq_dictionary_filtered_by_length, allow_gene_removal,
-                                      keep_low_complexity_sequences, low_complexity_seq_names):
+                                      keep_low_complexity_sequences, low_complexity_seq_names, logger=None):
     """
     Takes a gene_id:frame-corrected-sequences-filtered-by-length dict. If sequences with low complexity regions were
     identified via 'hybpiper check_targetfile', and keep_low_complexity_sequences is not True, remove these low
@@ -610,6 +621,7 @@ def get_complexity_filtered_sequences(gene_to_inframe_seq_dictionary_filtered_by
     :param bool allow_gene_removal: if True, allow all seqs for a given gene to be removed
     :param bool keep_low_complexity_sequences: if True, keep sequences that contain regions of low-complexity
     :param list low_complexity_seq_names: list of sequence names for seqs with regions of low-complexity
+    :param logging.Logger logger: a logger object
     :return collections.defaultdict, list: a dictionary of gene to SeqRecord objects for all in-frame sequences,
     filtered by length percentage (and, optionally, low-complexity sequences), list of seqs with low-complexity regions
     """
@@ -706,7 +718,7 @@ def write_dna_output_files(target_fasta_file, gene_to_inframe_seq_dictionary_fix
     fixed_and_filtered_target_file_filename = f'{file}_fixed{ext}'
     seqs_with_stop_codons_all_frames_filename = f'{file}_stop_codons_all_frames{ext}'
     seqs_with_undetermined_frame_filename = f'{file}_undetermined_frame{ext}'
-    seqs_with_multiple_frames_above_maximum_distance_filename  = f'{file}_above_maximum_distance_frames{ext}'
+    seqs_with_multiple_frames_above_maximum_distance_filename = f'{file}_above_maximum_distance_frames{ext}'
     seq_with_low_complexity_regions_filename = f'{file}_low_complexity_regions{ext}'
 
     filtered_seqs = [seq for gene, sequences in gene_to_inframe_seq_dictionary_fixed_and_filtered.items() for seq in
@@ -760,15 +772,17 @@ def write_aa_output_files(target_fasta_file, gene_to_protein_seq_dictionary_filt
             SeqIO.write(low_complexity_seqs, low_complexity_handle, 'fasta')
 
 
-def inframe_seq_alignments_dna(gene_to_inframe_seq_dictionary, concurrent_alignments, threads_per_concurrent_alignment):
+def inframe_seq_alignments_dna(gene_to_inframe_seq_dictionary, concurrent_alignments,
+                               threads_per_concurrent_alignment, logger=None):
     """
     Generate per-gene alignments of protein translations of each 'fixed' inframe DNA sequence. Useful for identifying
     problems in the 'fixed' sequences (e.g. when frameshifts are present but do not introduce stop codons).
 
     :param collections.defaultdict gene_to_inframe_seq_dictionary: a dictionary of gene to SeqRecord objects for all
-    fixed sequences.
-    :param int concurrent_alignments: number of alignments to run concurrently.
-    :param int threads_per_concurrent_alignment: Number of threads to run each concurrent alignment with.
+    fixed sequences
+    :param int concurrent_alignments: number of alignments to run concurrently
+    :param int threads_per_concurrent_alignment: Number of threads to run each concurrent alignment with
+    :param logging.Logger logger: a logger object
     :return:
     """
 
@@ -792,17 +806,20 @@ def inframe_seq_alignments_dna(gene_to_inframe_seq_dictionary, concurrent_alignm
     align_extractions_multiprocessing(output_folder_unaligned,
                                       output_folder_aligned,
                                       concurrent_alignments,
+                                      threads_per_concurrent_alignment,
+                                      logger=logger)
 
-                                      threads_per_concurrent_alignment)
 
-def inframe_seq_alignments_aa(gene_to_protein_seq_dictionary, concurrent_alignments, threads_per_concurrent_alignment):
+def inframe_seq_alignments_aa(gene_to_protein_seq_dictionary, concurrent_alignments,
+                              threads_per_concurrent_alignment, logger=None):
     """
     Generate per-gene alignments of protein seqs. Useful for identifying any problems in the filtere sequences.
 
     :param collections.defaultdict gene_to_protein_seq_dictionary: a dictionary of gene to SeqRecord objects for all
-    fixed sequences.
-    :param int concurrent_alignments: number of alignments to run concurrently.
-    :param int threads_per_concurrent_alignment: Number of threads to run each concurrent alignment with.
+    fixed sequences
+    :param int concurrent_alignments: number of alignments to run concurrently
+    :param int threads_per_concurrent_alignment: Number of threads to run each concurrent alignment with
+    :param logging.Logger logger: a logger object
     :return:
     """
 
@@ -822,14 +839,17 @@ def inframe_seq_alignments_aa(gene_to_protein_seq_dictionary, concurrent_alignme
     align_extractions_multiprocessing(output_folder_unaligned,
                                       output_folder_aligned,
                                       concurrent_alignments,
-                                      threads_per_concurrent_alignment)
+                                      threads_per_concurrent_alignment,
+                                      logger=logger)
 
 
-def parse_control_file(control_file):
+def parse_control_file(control_file, logger=None):
     """
     Checks that the control file provided exists and can be parsed correctly.
 
     :param str control_file: path to the control file output of `hybpiper check_targetfile`
+    :param logging.Logger logger: a logger object
+    :return dict control_dict: a dictionary created from the control file output of "hytbpiper check_targetfile"
     """
 
     logger.info(f'{"[INFO]:":10} Reading the provided control file "{control_file}"...')
@@ -887,12 +907,13 @@ def get_protein_dict(target_file):
     return protein_dict
 
 
-def check_reference_protein_file(reference_protein_file):
+def check_reference_protein_file(reference_protein_file, logger=None):
     """
     Checks that the fasta headers in the reference protein file (if provided) are formatted correctly
 
     :param str or None reference_protein_file: if str, path to the reference target file
-    :return:
+    :param logging.Logger logger: a logger object
+    :return None:
     """
 
     if reference_protein_file:
@@ -980,8 +1001,9 @@ def standalone():
     parser.add_argument('--threads_per_concurrent_alignment', default=1, type=int, metavar='INTEGER',
                         help='Number of threads to run each concurrent alignment with. Default is 1.')
 
-    results = parser.parse_args()
-    return results
+    args = parser.parse_args()
+
+    main(args)
 
 
 ########################################################################################################################
@@ -995,13 +1017,15 @@ def main(args):
     :param argparse.Namespace args:
     """
 
+    logger = setup_logger(__name__, 'fix_targetfile')
+
     logger.info(f'{"[INFO]:":10} Script was called with these arguments:')
     fill = textwrap.fill(' '.join(sys.argv[1:]), width=90, initial_indent=' ' * 11, subsequent_indent=' ' * 11,
                          break_on_hyphens=False)
     logger.info(f'{fill}\n')
 
     # Parse the control file
-    control_dict = parse_control_file(args.control_file)
+    control_dict = parse_control_file(args.control_file, logger=logger)
 
     # Set target file type and path, check it exists and isn't empty, and check type matches control file:
     if args.targetfile_dna:
@@ -1030,7 +1054,7 @@ def main(args):
                  f'sequences')
 
     # Check the reference protein file, if provided:
-    check_reference_protein_file(args.reference_protein_file)
+    check_reference_protein_file(args.reference_protein_file, logger=logger)
 
     # Get parameters from command line if provided, control file if not:
     no_terminal_stop_codons = args.no_terminal_stop_codons if \
@@ -1056,17 +1080,20 @@ def main(args):
                                   no_terminal_stop_codons,
                                   args.reference_protein_file,
                                   args.maximum_distance,
-                                  allow_gene_removal)
+                                  allow_gene_removal,
+                                  logger=logger)
 
         gene_to_inframe_seq_dictionary_filtered_by_length = \
             get_length_filtered_sequences(gene_to_inframe_seq_dictionary,
-                                          args.filter_by_length_percentage)
+                                          args.filter_by_length_percentage,
+                                          logger=logger)
 
         gene_to_inframe_seq_dictionary_filtered_by_length_and_complexity, low_complexity_seqs = \
             get_complexity_filtered_sequences(gene_to_inframe_seq_dictionary_filtered_by_length,
                                               allow_gene_removal,
                                               args.keep_low_complexity_sequences,
-                                              low_complexity_seq_names)
+                                              low_complexity_seq_names,
+                                              logger=logger)
 
         write_dna_output_files(targetfile,
                                gene_to_inframe_seq_dictionary_filtered_by_length_and_complexity,
@@ -1078,29 +1105,35 @@ def main(args):
         if args.alignments:
             inframe_seq_alignments_dna(gene_to_inframe_seq_dictionary_filtered_by_length_and_complexity,
                                        args.concurrent_alignments,
-                                       args.threads_per_concurrent_alignment)
+                                       args.threads_per_concurrent_alignment,
+                                       logger=logger)
 
     if targetfile_type == 'protein':
         gene_to_protein_seq_dictionary = get_protein_dict(targetfile)
 
         gene_to_protein_seq_dictionary_filtered_by_length = \
             get_length_filtered_sequences(gene_to_protein_seq_dictionary,
-                                          args.filter_by_length_percentage)
+                                          args.filter_by_length_percentage,
+                                          logger=logger)
 
         gene_to_protein_seq_dictionary_filtered_by_length_and_complexity, low_complexity_seqs = \
             get_complexity_filtered_sequences(gene_to_protein_seq_dictionary_filtered_by_length,
                                               allow_gene_removal,
                                               args.keep_low_complexity_sequences,
-                                              low_complexity_seq_names)
+                                              low_complexity_seq_names,
+                                              logger=logger)
 
         write_aa_output_files(targetfile,
                               gene_to_protein_seq_dictionary_filtered_by_length_and_complexity,
-                              low_complexity_seqs)
+                              low_complexity_seqs,
+                              logger=logger)
 
         if args.alignments:
             inframe_seq_alignments_aa(gene_to_protein_seq_dictionary_filtered_by_length_and_complexity,
                                       args.concurrent_alignments,
-                                      args.threads_per_concurrent_alignment)
+                                      args.threads_per_concurrent_alignment,
+                                      logger=logger)
+
 
 ########################################################################################################################
 ########################################################################################################################
