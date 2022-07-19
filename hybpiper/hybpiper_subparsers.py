@@ -523,8 +523,10 @@ def add_fix_targetfile_parser(subparsers):
     """
 
     parser_fix_target_file = subparsers.add_parser('fix_targetfile',
-                                                   help='Fix the target file (sequences with low-complexity regions, '
-                                                        'nucleotide sequences with undetermined readiong frames.')
+                                                   help='Fix the target file: optionally remove sequences with '
+                                                        'low-complexity regions, nucleotide sequences with '
+                                                        'undetermined reading frames, sequences beneath a given '
+                                                        'length threshold.')
     group_1 = parser_fix_target_file.add_mutually_exclusive_group(required=True)
     group_1.add_argument('--targetfile_dna', '-t_dna',
                          dest='targetfile_dna',
