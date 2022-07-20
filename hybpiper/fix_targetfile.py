@@ -492,7 +492,8 @@ def get_inframe_sequences(target_fasta_file, no_terminal_stop_codons, reference_
                 best_match_seq = choose_best_match_translation(sequence_list,
                                                                gene_to_inframe_seq_dictionary[gene_id],
                                                                ref_is_protein=False,
-                                                               maximum_distance=maximum_distance)
+                                                               maximum_distance=maximum_distance,
+                                                               logger=logger)
                 if best_match_seq:
                     best_match_seq.name = '_'.join(best_match_seq.name.split('_')[:-2])
                     best_match_seq.id = '_'.join(best_match_seq.id.split('_')[:-2])
