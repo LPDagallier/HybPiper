@@ -1125,8 +1125,7 @@ def main(args):
 
         write_aa_output_files(targetfile,
                               gene_to_protein_seq_dictionary_filtered_by_length_and_complexity,
-                              low_complexity_seqs,
-                              logger=logger)
+                              low_complexity_seqs)
 
         if args.alignments:
             inframe_seq_alignments_aa(gene_to_protein_seq_dictionary_filtered_by_length_and_complexity,
